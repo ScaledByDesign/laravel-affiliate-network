@@ -100,6 +100,15 @@ class NetAffiliation extends AbstractNetwork implements NetworkInterface
             $Merchant = Merchant::createInstance();
             $Merchant->merchant_ID = $merchant['cid'];
             $Merchant->name = $merchant['name'];
+            // Added more info - 2018-04-23 <PN>
+            $Merchant->status = $merchant['status'];
+            $Merchant->url = $merchant['url'];
+            $Merchant->status = $merchant['status'];
+            if (!empty($merchant['launch_date'])) {
+                $date = new \DateTime($merchant['launch_date']);
+                //TODO check date format
+                //$Merchant->launch_date = $date;
+            }
             $arrResult[] = $Merchant;
         }
 
@@ -122,11 +131,14 @@ class NetAffiliation extends AbstractNetwork implements NetworkInterface
         $arrResult = array();
         $arrResponse = xml2array($xml);
         if(!is_array($arrResponse) || count($arrResponse) <= 0) {
-            return $arrResult;
+            return $result;
         }
 
         $arrItems = $arrResponse['listing']['item'];
         foreach($arrItems as $item) {
+            if (!isset($item['idcamp'])){
+                continue;
+            }
             $Deal = Deal::createInstance();
             $Deal->merchant_ID = $item['idcamp'];
             $Deal->code = $item['code'];

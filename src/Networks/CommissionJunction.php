@@ -27,47 +27,47 @@ class CommissionJunction extends AbstractNetwork implements NetworkInterface
     private $_username = '';
     private $_password = '';
     private $_passwordApi = '';
-    private $_website_id = '';
+    private $_publisher_id = '';
     protected $_tracking_parameter = 'sid';
 
     /**
      * @method __construct
      */
-    public function __construct(string $username, string $passwordApi, string $idSite='')
+    public function __construct(string $username, string $passwordApi, $idSite)
     {
-        $this->_network = new \Oara\Network\Publisher\CommissionJunction;
+        $this->_network = new \Oara\Network\Publisher\CommissionJunctionGraphQL();
         $this->_username = $username;
         $this->_password = $passwordApi;
         $this->_passwordApi = $passwordApi;
-        $idSite = $this->_website_id;
+        $this->_publisher_id = $idSite;
 
-        if (trim($idSite)!=''){
+        if (trim($idSite) != '') {
             $this->addAllowedSite($idSite);
         }
 
-        $this->login( $this->_username, $this->_password ,$this->_website_id);
+        $this->login($this->_username, $this->_password, $this->_publisher_id);
     }
 
     /**
      * @return bool
      */
-    public function login(string $username, string $password,string $idSite=''): bool
+    public function login(string $username, string $password, $idSite): bool
     {
         $this->_logged = false;
-        if (isNullOrEmpty( $username ) && isNullOrEmpty( $password )) {
+        if (isNullOrEmpty($username) && isNullOrEmpty($password)) {
             return false;
         }
         $this->_username = $username;
         $this->_password = $password;
-        $this->_passwordApi= $password;
-        $this->_website_id = $idSite;
+        $this->_passwordApi = $password;
+        $this->_publisher_id = $idSite;
         $credentials = array();
         $credentials["user"] = $this->_username;
         $credentials["password"] = $this->_username;
         $credentials["apipassword"] = $this->_passwordApi;
         $credentials["id_site"] = $idSite;
 
-        if (trim($idSite)!=''){
+        if (trim($idSite) != '') {
             $this->addAllowedSite($idSite);
         }
 
@@ -82,7 +82,7 @@ class CommissionJunction extends AbstractNetwork implements NetworkInterface
     /**
      * @return bool
      */
-    public function checkLogin() : bool
+    public function checkLogin(): bool
     {
         return $this->_logged;
     }
@@ -95,9 +95,20 @@ class CommissionJunction extends AbstractNetwork implements NetworkInterface
         $arrResult = array();
         $merchantList = $this->_network->getMerchantList();
         foreach ($merchantList as $merchant) {
+            if ($merchant['status'] == 'Setup') {
+                // Ignore setup programs not yet active
+                continue;
+            }
             $Merchant = Merchant::createInstance();
             $Merchant->merchant_ID = $merchant['cid'];
             $Merchant->name = $merchant['name'];
+            // Added more info - 2018-04-23 <PN>
+            $Merchant->url = $merchant['url'];
+            if ($merchant['status'] == 'Active') {
+                $Merchant->status = $merchant['relationship_status'];
+            } else {
+                $Merchant->status = $merchant['status'];
+            }
             $arrResult[] = $Merchant;
         }
 
@@ -109,35 +120,40 @@ class CommissionJunction extends AbstractNetwork implements NetworkInterface
      * @param int $page
      * @param int $records_per_page
      * @return DealsResultset array of Deal
+     * https://developers.cj.com/docs/rest-apis/link-search
      */
     public function getDeals($merchantID = NULL, int $page = 1, int $records_per_page = 100): DealsResultset
     {
-        if (empty($page)){
+        if (empty($page)) {
             $page = 1;
         }
-        if (empty($records_per_page)){
+        if (empty($records_per_page)) {
             $records_per_page = 100;
         }
-        if (empty($merchantID)){
-            $merchantID  = 'joined';
+        if (empty($merchantID)) {
+            $merchantID = 'joined';
         }
         $arrResult = new DealsResultset();
         $arrResult->items = $records_per_page;
 
-        while ((int) $arrResult->items >= (int) $records_per_page){
+        while ((int)$arrResult->items >= (int)$records_per_page) {
 
             try {
                 //<JC> 2017-10-23  (valid keys are: advertiser-ids, category, event-name, keywords, language, link-type, page-number, promotion-end-date, promotion-start-date, promotion-type, records-per-page, website-id)
                 $response = $this->_apiCall(
-                    'https://link-search.api.cj.com/v2/link-search?website-id=' . $this->_website_id .
+                    'https://link-search.api.cj.com/v2/link-search?website-id=' . $_ENV['CJ_API_WEBSITE_ID'] .
                     '&advertiser-ids=' . $merchantID .
                     '&records-per-page=' . $records_per_page .
                     '&page-number=' . $page .
                     '&promotion-type=coupon'
                 );
 
-                if ($response===false || \preg_match("/error/", $response)) {
-                    return $arrResult;
+                if ($response === false || \preg_match("/<error-message>/", $response)) {
+                    preg_match('/<error-message>(.*)<\/error-message>/', $response, $matches);
+                    $error_msg = $matches[1] ?? $response;
+                    echo "[CommissionJunction][Error] " . $error_msg . PHP_EOL;
+                    var_dump($error_msg);
+                    throw new \Exception($error_msg);
                 }
 
                 $arrResponse = xml2array($response);
@@ -145,16 +161,22 @@ class CommissionJunction extends AbstractNetwork implements NetworkInterface
                 if (!is_array($arrResponse) || count($arrResponse) <= 0) {
                     return $arrResult;
                 }
-                if (!isset($arrResponse['cj-api']['links'])){
+                if (!isset($arrResponse['cj-api']['links'])) {
                     return $arrResult;
                 }
-                $arrResult->page=$arrResponse['cj-api']['links_attr']['page-number'];
-                $arrResult->items=$arrResponse['cj-api']['links_attr']['records-returned'];
-                $arrResult->total=$arrResponse['cj-api']['links_attr']['total-matched'];
+                if (!isset($arrResponse['cj-api']['links']['link'])) {
+                    return $arrResult;
+                }
+                $arrResult->page = $arrResponse['cj-api']['links_attr']['page-number'];
+                $arrResult->items = $arrResponse['cj-api']['links_attr']['records-returned'];
+                $arrResult->total = $arrResponse['cj-api']['links_attr']['total-matched'];
                 ($arrResult->total > 0) ? $arrResult->num_pages = (int)ceil($arrResult->total / $records_per_page) : $arrResult->num_pages = 0;
-                $a_links = $arrResponse['cj-api']['links']['link'];
 
+                $a_links = $arrResponse['cj-api']['links']['link'];
                 foreach ($a_links as $link) {
+                    if (!isset($link['link-id'])) {
+                        continue;
+                    }
                     $Deal = Deal::createInstance();
                     $Deal->deal_ID = $link['link-id'];
                     $Deal->name = $link['link-name'];
@@ -179,9 +201,10 @@ class CommissionJunction extends AbstractNetwork implements NetworkInterface
                     $arrResult->deals[0][] = $Deal;
                 }
                 $page++;
-            }
-            catch (\Exception $e){
-                return $arrResult;
+            } catch (\Exception $e) {
+                echo "[CommissionJunction][Error] " . $e->getMessage() . PHP_EOL;
+                var_dump($e->getTraceAsString());
+                throw new \Exception($e);
             }
         }
 
@@ -206,27 +229,30 @@ class CommissionJunction extends AbstractNetwork implements NetworkInterface
             }
         }
         */
-        $transactionList = $this->_network->getTransactionList($arrMerchantID, $dateFrom,$dateTo);
+        $transactionList = $this->_network->getTransactionList($arrMerchantID, $dateFrom, $dateTo);
         //echo "<br>merchants id array<br>".print_r($arrMerchantID);
         //$counter=0;
-        foreach($transactionList as $transaction) {
+        foreach ($transactionList as $transaction) {
             $Transaction = Transaction::createInstance();
             $Transaction->status = $transaction['status'];
             $Transaction->amount = $transaction['amount'];
             $Transaction->custom_ID = $transaction['custom_id'];
             $Transaction->unique_ID = $transaction['unique_id'];
-            $Transaction->transaction_ID = $transaction['order-id'];
+            // Use 'original-action-id' instead of 'order-id' as reference field between original commission and adjust/correction commission - 2018-07-13 <PN>
+            // $Transaction->transaction_ID = $transaction['order-id'];
+            $Transaction->transaction_ID = $transaction['original-action-id'];
             $Transaction->commission = $transaction['commission'];
             if (!empty($transaction['date'])) {
                 $date = new \DateTime($transaction['date']);
                 $Transaction->date = $date; // $date->format('Y-m-d H:i:s');
             }
             $Transaction->merchant_ID = $transaction['merchantId'];
+            $Transaction->original = $transaction['original'];
             //original	Displays either a '1' indicating an original transaction or a '0' indicating a non-original or correction transaction.
             // considero transazioni valide solo quelle di tipo original come viene fatto dal report consultabile sul sito web di c.j.
             // Don't check for 'original' to get DECLINED transactions - 2017-12-13 <PN>
             // if ($transaction['original'] == 'true') {
-                $arrResult[] = $Transaction;
+            $arrResult[] = $Transaction;
             // }
             /*
             echo "custom_id ".$transaction['custom_id']." unique_id ".$transaction['unique_id']." aid ".$transaction['aid']." commission-id ".$transaction['commission-id'].
@@ -263,7 +289,7 @@ class CommissionJunction extends AbstractNetwork implements NetworkInterface
     }
 
     /**
-     * @param  array $params
+     * @param array $params
      *
      * @return ProductsResultset
      */
@@ -284,19 +310,26 @@ class CommissionJunction extends AbstractNetwork implements NetworkInterface
         curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, FALSE);
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, FALSE);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, TRUE);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, array("Authorization: " . $this->_passwordApi));
+        if (!empty($this->_publisher_id)) {
+            curl_setopt($ch, CURLOPT_HTTPHEADER, array("Authorization: Bearer " . $this->_passwordApi));
+        } else {
+            curl_setopt($ch, CURLOPT_HTTPHEADER, array("Authorization: " . $this->_passwordApi));
+        }
+
         $curl_results = curl_exec($ch);
         curl_close($ch);
         return $curl_results;
     }
+
 
     public function getTrackingParameter()
     {
         return $this->_tracking_parameter;
     }
 
-    public function addAllowedSite($idSite){
-        if (trim($idSite)!=''){
+    public function addAllowedSite($idSite)
+    {
+        if (trim($idSite) != '') {
             $this->_network->addAllowedSite($idSite);
         }
     }

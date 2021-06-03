@@ -19,7 +19,7 @@ if (!defined('COOKIES_BASE_DIR')){
  * Class TradeDoubler
  * @package Padosoft\AffiliateNetwork\Networks
  */
-class TradeDoubler extends AbstractNetwork implements NetworkInterface
+class TradeDoublerWhitelabel extends AbstractNetwork implements NetworkInterface
 {
     /**
      * @var object
@@ -33,19 +33,19 @@ class TradeDoubler extends AbstractNetwork implements NetworkInterface
     protected $_tracking_parameter    = 'epi';
 
     /**
-	 * TradeDoubler constructor.
-	 * @param string $username
-	 * @param string $password
-	 * @param string $idSite
-	 */
+     * TradeDoubler constructor.
+     * @param string $username
+     * @param string $password
+     * @param string $idSite
+     */
     public function __construct(string $username, string $password, string $idSite = '')
     {
-        $this->_network = new \Oara\Network\Publisher\TradeDoubler;
+        $this->_network = new TradeDoublerEx;
         $this->_username = $username;
         $this->_password = $password;
-	    $this->_idSite = $idSite;
+        $this->_idSite = $idSite;
         $this->_apiClient = null;
-        $this->login( $this->_username, $this->_password, $this->_idSite );
+        $this->login( $this->_username, $this->_password );
     }
 
     public function login(string $username, string $password, string $idSite = ''): bool
@@ -94,15 +94,6 @@ class TradeDoubler extends AbstractNetwork implements NetworkInterface
             $Merchant = Merchant::createInstance();
             $Merchant->merchant_ID = $merchant['cid'];
             $Merchant->name = $merchant['name'];
-            $Merchant->status = $merchant['status'];
-            if (!empty($merchant['launch_date'])) {
-                $date = new \DateTime($merchant['launch_date']);
-                $Merchant->launch_date = $date;
-            }
-            if (!empty($merchant['application_date'])) {
-                $date = new \DateTime($merchant['application_date']);
-                $Merchant->application_date = $date;
-            }
             $arrResult[] = $Merchant;
         }
 
@@ -198,6 +189,12 @@ class TradeDoubler extends AbstractNetwork implements NetworkInterface
             return array();
         }
         $arrResult = array();
+        if (count( $arrMerchantID ) < 1) {
+            $merchants = $this->getMerchants();
+            foreach ($merchants as $merchant) {
+                $arrMerchantID[$merchant->merchant_ID] = ['cid' => $merchant->merchant_ID, 'name' => $merchant->name];
+            }
+        }
         $transactionList = $this->_network->getTransactionList($arrMerchantID, $dateFrom, $dateTo);
         foreach($transactionList as $transaction) {
             $Transaction = Transaction::createInstance();

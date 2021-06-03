@@ -11,12 +11,11 @@ use Padosoft\AffiliateNetwork\AbstractNetwork;
 use Padosoft\AffiliateNetwork\NetworkInterface;
 use Padosoft\AffiliateNetwork\ProductsResultset;
 
-
 /**
- * Class Ebay
+ * Class AdCell
  * @package Padosoft\AffiliateNetwork\Networks
  */
-class Ebay extends AbstractNetwork implements NetworkInterface
+class AdCell extends AbstractNetwork implements NetworkInterface
 {
     /**
      * @var object
@@ -24,47 +23,35 @@ class Ebay extends AbstractNetwork implements NetworkInterface
     private $_network = null;
     private $_username = '';
     private $_password = '';
-    protected $_apiClient = null;
-    protected $_tracking_parameter = 'customid';
+    protected $_tracking_parameter = 'subId';
+    private $_idSite = '';
 
     /**
      * @method __construct
      */
-    public function __construct(string $username, string $password, string $idSite = '')
+    public function __construct(string $username, string $password, string $idSite='')
     {
-        $this->_network = new \Oara\Network\Publisher\Ebay();
+        $this->_network = new \Oara\Network\Publisher\AdCell;
         $this->_username = $username;
         $this->_password = $password;
-        if (trim($idSite) != '') {
-            // Ebay needs Site to filter countries
-            $this->addAllowedSite($idSite);
-        }
-        $this->login($this->_username, $this->_password);
+        $this->_idSite = $idSite;
+
+        $this->login( $this->_username, $this->_password, $idSite );
     }
 
-    public function addAllowedSite($idSite)
-    {
-        if (trim($idSite) != '') {
-            $this->_network->addAllowedSite($idSite);
-        }
-    }
-
-    public function login(string $username, string $password, string $idSite = ''): bool
-    {
+    public function login(string $username, string $password,string $idSite=''): bool{
         $this->_logged = false;
-        if (isNullOrEmpty($username) || isNullOrEmpty($password)) {
+        if (isNullOrEmpty( $username ) || isNullOrEmpty( $password )) {
 
             return false;
         }
         $this->_username = $username;
         $this->_password = $password;
-        if (trim($idSite) != '') {
-            // Ebay needs Site to filter countries
-            $this->addAllowedSite($idSite);
-        }
+        $this->_idSite = $idSite;
         $credentials = array();
         $credentials["user"] = $this->_username;
         $credentials["password"] = $this->_password;
+        $credentials["idSite"] = $this->_idSite;
         $this->_network->login($credentials);
         if ($this->_network->checkConnection()) {
             $this->_logged = true;
@@ -76,43 +63,47 @@ class Ebay extends AbstractNetwork implements NetworkInterface
     /**
      * @return bool
      */
-    public function checkLogin(): bool
+    public function checkLogin() : bool
     {
         return $this->_logged;
     }
 
     /**
-     * @return array of Merchants
-     */
-    public function getMerchants(): array
+	 * @return array of Merchants
+	 * @throws \Exception
+	 */
+    public function getMerchants() : array
     {
-        $arrResult = array();
-        return $arrResult;
+        throw new \Exception("Not implemented yet");
     }
 
     /**
-     * @param int $merchantID
-     * @return array of Deal
-     */
-    public function getDeals($merchantID = NULL, int $page = 0, int $items_per_page = 10): DealsResultset
+	 * @param null $merchantID
+	 * @param int $page
+	 * @param int $items_per_page
+	 * @return DealsResultset  array of Deal
+	 * @throws \Exception
+	 */
+    public function getDeals($merchantID=NULL,int $page=0,int $items_per_page=100 ): DealsResultset
     {
-        $arrResult = array();
-        return $arrResult;
+        throw new \Exception("Not implemented yet");
+
     }
 
-    /**
-     * @param \DateTime $dateFrom
-     * @param \DateTime $dateTo
-     * @param int $merchantID
-     * @return array of Transaction
-     */
-    public function getSales(\DateTime $dateFrom, \DateTime $dateTo, array $arrMerchantID = array()): array
+   	/**
+	 * @param \DateTime $dateFrom
+	 * @param \DateTime $dateTo
+	 * @param array $arrMerchantID
+	 * @return array of Transaction
+	 * @throws \Exception
+	 */
+    public function getSales(\DateTime $dateFrom, \DateTime $dateTo, array $arrMerchantID = array()) : array
     {
+
         $arrResult = array();
         $transactionList = $this->_network->getTransactionList($arrMerchantID, $dateFrom, $dateTo);
-        foreach ($transactionList as $transaction) {
+        foreach($transactionList as $transaction) {
             $Transaction = Transaction::createInstance();
-
             if (isset($transaction['currency']) && !empty($transaction['currency'])) {
                 $Transaction->currency = $transaction['currency'];
             } else {
@@ -120,7 +111,7 @@ class Ebay extends AbstractNetwork implements NetworkInterface
             }
             $Transaction->status = $transaction['status'];
             $Transaction->amount = $transaction['amount'];
-            array_key_exists_safe($transaction, 'custom_id') ? $Transaction->custom_ID = $transaction['custom_id'] : $Transaction->custom_ID = '';
+            array_key_exists_safe( $transaction,'custom_id' ) ? $Transaction->custom_ID = $transaction['custom_id'] : $Transaction->custom_ID = '';
             $Transaction->title = '';
             $Transaction->unique_ID = $transaction['unique_id'];
             $Transaction->commission = $transaction['commission'];
@@ -134,10 +125,11 @@ class Ebay extends AbstractNetwork implements NetworkInterface
                 $Transaction->update_date = new \DateTime($transaction['update_date']);
             }
             $Transaction->merchant_ID = $transaction['merchantId'];
-            $Transaction->campaign_name = $transaction['merchantName'];
-            // $Transaction->IP =  $transaction['IP'];
+            $Transaction->program_name =  $transaction['merchantName'];
+            $Transaction->campaign_name =  $transaction['campaign_name'];
+            $Transaction->IP =  $transaction['IP'];
             $Transaction->approved = false;
-            if ($Transaction->status == \Oara\Utilities::STATUS_CONFIRMED) {
+            if ($Transaction->status == \Oara\Utilities::STATUS_CONFIRMED){
                 $Transaction->approved = true;
             }
             $arrResult[] = $Transaction;
@@ -152,27 +144,26 @@ class Ebay extends AbstractNetwork implements NetworkInterface
      * @param int $merchantID
      * @return array of Stat
      */
-    public function getStats(\DateTime $dateFrom, \DateTime $dateTo, int $merchantID = 0): array
+    public function getStats(\DateTime $dateFrom, \DateTime $dateTo, int $merchantID = 0) : array
     {
-        // TODO
         return array();
-
     }
 
 
     /**
-     * @param array $params
-     * @return ProductsResultset
-     * @throws \Exception
-     */
+	 * @param array $params
+	 * @return ProductsResultset
+	 * @throws \Exception
+	 */
     public function getProducts(array $params = []): ProductsResultset
     {
-        // TODO: Implement getProducts() method.
         throw new \Exception("Not implemented yet");
     }
 
-    public function getTrackingParameter()
-    {
+    public function getTrackingParameter(){
         return $this->_tracking_parameter;
     }
+
+
+
 }

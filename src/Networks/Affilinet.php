@@ -64,7 +64,6 @@ class Affilinet extends AbstractNetwork implements NetworkInterface
         if ($this->_network->checkConnection()) {
             $this->_logged = true;
         }
-
         return $this->_logged;
     }
 
@@ -87,6 +86,14 @@ class Affilinet extends AbstractNetwork implements NetworkInterface
             $Merchant = Merchant::createInstance();
             $Merchant->merchant_ID = $merchant['cid'];
             $Merchant->name = $merchant['name'];
+            // Added more info - 2018-04-20 <PN>
+            $Merchant->url = $merchant['url'];
+            $Merchant->status = $merchant['status'];
+            if (!empty($merchant['launch_date'])) {
+                $date = new \DateTime($merchant['launch_date']);
+                //TODO check date format
+                //$Merchant->launch_date = $date;
+            }
             $arrResult[] = $Merchant;
         }
 
@@ -202,6 +209,7 @@ class Affilinet extends AbstractNetwork implements NetworkInterface
                 $myTransaction->custom_ID = $transaction['custom_id'];
                 $myTransaction->unique_ID = $transaction['unique_id'];
                 $myTransaction->commission = $transaction['commission'];
+                $myTransaction->currency = $transaction['currency'];
                 if (!empty($transaction['date'])) {
                     $date = new \DateTime($transaction['date']);
                     $myTransaction->date = $date; // $date->format('Y-m-d H:i:s');

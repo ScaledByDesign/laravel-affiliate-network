@@ -70,22 +70,28 @@ class Effiliation extends AbstractNetwork implements NetworkInterface
     public function getMerchants() : array
     {
         $arrResult = array();
-        $url = 'http://api.effiliation.com/apiv2/programs.xml?key=' . $this->_password . "&filter=all";
+        // Fixed endpoint to apiv2.effiliation.com <PN> 2020-08-12
+        $url = 'http://apiv2.effiliation.com/apiv2/programs.xml?key=' . $this->_password . "&filter=all";
         echo "effiliation getMerchant url ",PHP_EOL;
-        //var_dump($url);
         $content = @\file_get_contents($url);
-        // echo "effiliation content",PHP_EOL;
-        //var_dump($content);
         $xml = \simplexml_load_string($content, null, LIBXML_NOERROR | LIBXML_NOWARNING);
-        // echo "effiliation XML ",PHP_EOL;
-        //var_dump($xml);
-        foreach ($xml->program as $merchant) {
-            $Merchant = Merchant::createInstance();
-            $Merchant->merchant_ID = (string)$merchant->id_programme;
-            $Merchant->name = (string)$merchant->nom;
-            $arrResult[] = $Merchant;
+        if ($xml !== false) {
+            foreach ($xml->program as $merchant) {
+                $Merchant = Merchant::createInstance();
+                $Merchant->merchant_ID = (string)$merchant->id_programme;
+                $Merchant->name = (string)$merchant->nom;
+                // Added more info - 2018-04-23 <PN>
+                $Merchant->launch_date = (string)$merchant->date_debut;
+                $Merchant->termination_date = (string)$merchant->date_fin;
+                $Merchant->status = (string)$merchant->etat;
+                if (empty($Merchant->status)) {
+                    // Empty means "not applied"
+                    $Merchant->status = 'not-applied';
+                }
+                $Merchant->url = (string)$merchant->url;
+                $arrResult[] = $Merchant;
+            }
         }
-
         return $arrResult;
     }
 
@@ -97,6 +103,7 @@ class Effiliation extends AbstractNetwork implements NetworkInterface
     {
         $result = DealsResultset::createInstance();
 
+        // Fixed endpoint to apiv2.effiliation.com <PN> 2020-08-12
         $url = 'http://apiv2.effiliation.com/apiv2/commercialtrades.json?filter=mines&key='.$this->_password;
         $json = file_get_contents($url);
 

@@ -12,10 +12,10 @@ use Padosoft\AffiliateNetwork\NetworkInterface;
 use Padosoft\AffiliateNetwork\ProductsResultset;
 
 /**
- * Class WebGains
+ * Class Admitad
  * @package Padosoft\AffiliateNetwork\Networks
  */
-class WebGains extends AbstractNetwork implements NetworkInterface
+class Admitad extends AbstractNetwork implements NetworkInterface
 {
     /**
      * @var object
@@ -23,31 +23,24 @@ class WebGains extends AbstractNetwork implements NetworkInterface
     private $_network = null;
     private $_username = '';
     private $_password = '';
-    private $_idSite = '';
     private $_apiClient = null;
-    protected $_tracking_parameter    = 'clickref';
+    protected $_tracking_parameter    = '';
+    private $_idSite = '';
 
     /**
      * @method __construct
      */
-    public function __construct(string $username, string $password,string $idSite='')
+    public function __construct(string $username, string $password, string $idSite='')
     {
-        $this->_network = new \Oara\Network\Publisher\WebGains;
+        $this->_network = new \Oara\Network\Publisher\Admitad;
         $this->_username = $username;
         $this->_password = $password;
         $this->_idSite = $idSite;
-        $apiUrl = 'http://ws.webgains.com/aws.php';
-        $this->_apiClient = new \SoapClient($apiUrl,
-            array('login' => $this->_username,
-                'encoding' => 'UTF-8',
-                'password' => $this->_password,
-                'compression' => SOAP_COMPRESSION_ACCEPT | SOAP_COMPRESSION_GZIP | SOAP_COMPRESSION_DEFLATE,
-                'soap_version' => SOAP_1_1)
-        );
-        $this->login( $this->_username, $this->_password, $this->_idSite);
+
+        $this->login( $this->_username, $this->_password, $idSite );
     }
 
-    public function login(string $username, string $password, string $idSite = ''): bool{
+    public function login(string $username, string $password,string $idSite=''): bool{
         $this->_logged = false;
         if (isNullOrEmpty( $username ) || isNullOrEmpty( $password )) {
 
@@ -59,6 +52,7 @@ class WebGains extends AbstractNetwork implements NetworkInterface
         $credentials = array();
         $credentials["user"] = $this->_username;
         $credentials["password"] = $this->_password;
+        $credentials["idSite"] = $this->_idSite;
         $this->_network->login($credentials);
         if ($this->_network->checkConnection()) {
             $this->_logged = true;
@@ -76,8 +70,9 @@ class WebGains extends AbstractNetwork implements NetworkInterface
     }
 
     /**
-     * @return array of Merchants
-     */
+	 * @return array of Merchants
+	 * @throws \Exception
+	 */
     public function getMerchants() : array
     {
         $arrResult = array();
@@ -86,75 +81,59 @@ class WebGains extends AbstractNetwork implements NetworkInterface
             $Merchant = Merchant::createInstance();
             $Merchant->merchant_ID = $merchant['cid'];
             $Merchant->name = $merchant['name'];
-            // Added more info - 2018-04-23 <PN>
             $Merchant->status = $merchant['status'];
             $Merchant->url = $merchant['url'];
+            if (!empty($merchant['launch_date'])) {
+                $date = new \DateTime($merchant['launch_date']);
+                $Merchant->launch_date = $date;
+            }
             $arrResult[] = $Merchant;
         }
-
         return $arrResult;
     }
 
     /**
-     * @param int $merchantID to filter only one merchant
-     * @return array of Deal
-     */
-    public function getDeals($merchantID = null, int $page = 0, int $items_per_page = 10): DealsResultset
+	 * @param null $merchantID
+	 * @param int $page
+	 * @param int $items_per_page
+	 * @return DealsResultset  array of Deal
+	 * @throws \Exception
+	 */
+    public function getDeals($merchantID=NULL,int $page=0,int $items_per_page=100 ): DealsResultset
     {
+        $arrResult = array();
 
         $result = DealsResultset::createInstance();
-        $arrResult = array();
-        if (!empty($this->_idSite)) {
-            // Account id is correct
-            $arrVouchers = $this->_network->getVouchers($this->_idSite);
 
-            foreach ($arrVouchers as $obj_voucher) {
+        $arrVouchers = $this->_network->getVouchers($this->_idSite);
 
-                $voucher = str_getcsv($obj_voucher, ',', '"');
-
-                if (count($voucher) < 12) {
-                    continue;
-                }
-                $voucher_id = $voucher[0];
-                $voucher_id = str_replace("\n", '', $voucher_id);
-                $advertiserId = $voucher[1];
-                $code = $voucher[7];
-                if ($voucher_id == "Voucher ID" || !is_numeric($advertiserId) || $code == "Code") {
-                    continue;
-                }
-                $starts = $voucher[4];
-                $ends = $voucher[5];
-                $deeplink_tracking = $voucher[6];
-                $description = $voucher[11];
-                $discount = abs((int)$voucher[8]);
-                $is_percentage = (bool)(strpos($voucher[8], '%') !== false);
-
-                if ($merchantID > 0) {
-                    if ($advertiserId != $merchantID) {
-                        continue;
-                    }
-                }
-
+        foreach($arrVouchers as $voucher) {
+            if (!empty($voucher['tracking']) && !empty($voucher['advertiser_id'])) {
                 $Deal = Deal::createInstance();
-                $Deal->deal_ID = $voucher_id;
-                $Deal->merchant_ID = $advertiserId;
-                $Deal->code = $code;
-                $Deal->description = $description;
-                $Deal->start_date = $Deal->convertDate($starts . ' 00:00:00');
-                $Deal->end_date = $Deal->convertDate($ends . ' 23:59:59');
-                $Deal->default_track_uri = $deeplink_tracking;
+                $Deal->deal_ID = md5($voucher['tracking']);    // Use link to generate a unique deal ID
+                $Deal->merchant_ID = $voucher['advertiser_id'];
+                $Deal->merchant_name = $voucher['advertiser_name'];
+                $Deal->code = $voucher['code'];
+                $Deal->name = $voucher['name'];
+                $Deal->description = $voucher['description'];
+                $Deal->start_date = $Deal->convertDate($voucher['start_date']);
+                $Deal->end_date = $Deal->convertDate($voucher['end_date']);
+                $Deal->default_track_uri = $voucher['tracking'];
+                $Deal->discount_amount = $voucher['discount_amount'];
+                $Deal->is_percentage = $voucher['is_percentage'];
                 $Deal->is_exclusive = false;
-                $Deal->discount_amount = $discount;
-                $Deal->is_percentage = $is_percentage;
-                $Deal->deal_type = \Oara\Utilities::OFFER_TYPE_VOUCHER;
+                $Deal->deal_type = $voucher['type'];
                 $arrResult[] = $Deal;
             }
         }
+
         $result->deals[]=$arrResult;
+
         return $result;
+
     }
 
-   /**
+   	/**
 	 * @param \DateTime $dateFrom
 	 * @param \DateTime $dateTo
 	 * @param array $arrMerchantID
@@ -163,35 +142,37 @@ class WebGains extends AbstractNetwork implements NetworkInterface
 	 */
     public function getSales(\DateTime $dateFrom, \DateTime $dateTo, array $arrMerchantID = array()) : array
     {
-        /*
-    	if (count( $arrMerchantID ) < 1) {
-            $merchants = $this->getMerchants();
-            foreach ($merchants as $merchant) {
-                $arrMerchantID[$merchant->merchant_ID] = ['cid' => $merchant->merchant_ID, 'name' => $merchant->name];
-            }
-        }
-        */
-	    $arrResult = array();
+
+        $arrResult = array();
         $transactionList = $this->_network->getTransactionList($arrMerchantID, $dateFrom, $dateTo);
         foreach($transactionList as $transaction) {
             $Transaction = Transaction::createInstance();
-            $Transaction->currency = $transaction['currency'];
+            if (isset($transaction['currency']) && !empty($transaction['currency'])) {
+                $Transaction->currency = $transaction['currency'];
+            } else {
+                $Transaction->currency = "EUR";
+            }
             $Transaction->status = $transaction['status'];
             $Transaction->amount = $transaction['amount'];
-            array_key_exists_safe( $transaction,
-                'custom_id' ) ? $Transaction->custom_ID = $transaction['custom_id'] : $Transaction->custom_ID = '';
+            array_key_exists_safe( $transaction,'custom_id' ) ? $Transaction->custom_ID = $transaction['custom_id'] : $Transaction->custom_ID = '';
             $Transaction->title = '';
             $Transaction->unique_ID = $transaction['unique_id'];
             $Transaction->commission = $transaction['commission'];
             $date = new \DateTime($transaction['date']);
             $Transaction->date = $date; // $date->format('Y-m-d H:i:s');
-            $Transaction->merchant_ID = $transaction['merchantId'];
-            $Transaction->approved = false;
-            if ($Transaction->status==\Oara\Utilities::STATUS_CONFIRMED){
-                $Transaction->approved = true;
+            // Future use - Only few providers returns these dates values - <PN> - 2017-06-29
+            if (isset($transaction['click_date']) && !empty($transaction['click_date'])) {
+                $Transaction->click_date = new \DateTime($transaction['click_date']);
             }
-            if ($transaction['paid'] == true) {
-                $Transaction->paid = true;
+            if (isset($transaction['update_date']) && !empty($transaction['update_date'])) {
+                $Transaction->update_date = new \DateTime($transaction['update_date']);
+            }
+            $Transaction->merchant_ID = $transaction['merchantId'];
+            $Transaction->campaign_name =  $transaction['merchantName'];
+            $Transaction->IP =  $transaction['IP'];
+            $Transaction->approved = false;
+            if ($Transaction->status == \Oara\Utilities::STATUS_CONFIRMED){
+                $Transaction->approved = true;
             }
             $arrResult[] = $Transaction;
         }
@@ -207,6 +188,7 @@ class WebGains extends AbstractNetwork implements NetworkInterface
      */
     public function getStats(\DateTime $dateFrom, \DateTime $dateTo, int $merchantID = 0) : array
     {
+        // TODO
         return array();
         /*
         $this->_apiClient->setConnectId($this->_username);
@@ -225,10 +207,10 @@ class WebGains extends AbstractNetwork implements NetworkInterface
 
 
     /**
-     * @param  array $params
-     *
-     * @return ProductsResultset
-     */
+	 * @param array $params
+	 * @return ProductsResultset
+	 * @throws \Exception
+	 */
     public function getProducts(array $params = []): ProductsResultset
     {
         // TODO: Implement getProducts() method.
@@ -238,4 +220,7 @@ class WebGains extends AbstractNetwork implements NetworkInterface
     public function getTrackingParameter(){
         return $this->_tracking_parameter;
     }
+
+
+
 }

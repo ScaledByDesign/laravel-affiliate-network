@@ -114,6 +114,18 @@ class Transaction
     public $IP = '';       // Future use - <PN>
 
     /**
+     * @var string
+     */
+    public $user_ID = '';   // Future use - <PN>
+
+    /**
+     * @var bool
+     */
+    public $original = true;    // Used by Commission Junction - added 2018-07-13 <PN>
+
+    public $commission_ID = ''; // Used by Publicideas - added 2019-08-12 <JC>
+
+    /**
      * @method createInstance
      * @return obj istance
      */

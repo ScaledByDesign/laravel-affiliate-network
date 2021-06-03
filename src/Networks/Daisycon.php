@@ -12,10 +12,10 @@ use Padosoft\AffiliateNetwork\NetworkInterface;
 use Padosoft\AffiliateNetwork\ProductsResultset;
 
 /**
- * Class LinkShare
+ * Class Daisycon
  * @package Padosoft\AffiliateNetwork\Networks
  */
-class LinkShare extends AbstractNetwork implements NetworkInterface
+class Daisycon extends AbstractNetwork implements NetworkInterface
 {
     /**
      * @var object
@@ -24,7 +24,7 @@ class LinkShare extends AbstractNetwork implements NetworkInterface
     private $_username = '';
     private $_password = '';
     private $_apiClient = null;
-    protected $_tracking_parameter    = '';
+    protected $_tracking_parameter = 'ws';
     private $_idSite = '';
 
     /**
@@ -32,11 +32,10 @@ class LinkShare extends AbstractNetwork implements NetworkInterface
      */
     public function __construct(string $username, string $password, string $idSite = '')
     {
-        $this->_network = new \Oara\Network\Publisher\LinkShare;
+        $this->_network = new \Oara\Network\Publisher\Daisycon;
         $this->_username = $username;
         $this->_password = $password;
-        $this->_idSite = $idSite;
-
+        $idSite = $this->_idSite;
         $this->login( $this->_username, $this->_password, $idSite );
     }
 
@@ -56,7 +55,6 @@ class LinkShare extends AbstractNetwork implements NetworkInterface
         if ($this->_network->checkConnection()) {
             $this->_logged = true;
         }
-
         return $this->_logged;
     }
 
@@ -79,9 +77,27 @@ class LinkShare extends AbstractNetwork implements NetworkInterface
             $Merchant = Merchant::createInstance();
             $Merchant->merchant_ID = $merchant['cid'];
             $Merchant->name = $merchant['name'];
+            $Merchant->url = $merchant['display_url'];
             $Merchant->status = $merchant['status'];
-            $Merchant->termination_date = $merchant['termination_date'];
-            $Merchant->url = $merchant['url'];
+            if (!empty($merchant['start_date'])) {
+                if ($merchant['start_date'] == '0000-00-00') {
+                    $Merchant->launch_date = null;
+                }
+                else {
+                    $date = new \DateTime($merchant['start_date']);
+                    //TODO check date format
+                    //$Merchant->launch_date = $date;
+                }
+            }
+            if (!empty($merchant['end_date'])) {
+                if ($merchant['end_date'] == '0000-00-00') {
+                    $Merchant->termination_date = null;
+                }
+                else {
+                    $date = new \DateTime($merchant['end_date']);
+                    $Merchant->termination_date = $date;
+                }
+            }
             $arrResult[] = $Merchant;
         }
         return $arrResult;
@@ -91,38 +107,45 @@ class LinkShare extends AbstractNetwork implements NetworkInterface
      * @param int $merchantID
      * @return array of Deal
      */
-    public function getDeals($merchantID=NULL,int $page=0,int $items_per_page=10 ): DealsResultset
+    public function getDeals($merchantID = null,int $page = 0,int $items_per_page = 100 ): DealsResultset
     {
         $arrResult = array();
 
-        $apiKey = $_ENV['LINKSHARE_TOKEN'];
-        $network = $_ENV['LINKSHARE_NETWORK'];
         $result = DealsResultset::createInstance();
 
-        $arrVouchers = $this->_network->getVouchers($apiKey, $network);
+        $arrVouchers = $this->_network->getVouchers();
 
         foreach($arrVouchers as $voucher) {
-            if (!empty($voucher['tracking']) && !empty($voucher['advertiser_id'])) {
+            if (!empty($voucher['promotioncode']) && !empty($voucher['program_id'])) {
                 $Deal = Deal::createInstance();
-                $Deal->deal_ID = md5($voucher['tracking']);    // Use link to generate a unique deal ID
-                $Deal->merchant_ID = $voucher['advertiser_id'];
-                $Deal->code = $voucher['code'];
-                $Deal->description = $voucher['description'] . ' ' . $voucher['restriction'];
+                $Deal->deal_ID = md5($voucher['program_id'] . $voucher['id']);    // generate a unique deal ID
+                $Deal->merchant_ID = $voucher['program_id'];
+                $Deal->code = $voucher['promotioncode'];
+                $Deal->name = $voucher['name'];
+                $Deal->description =  $voucher['description'];
                 $Deal->start_date = $Deal->convertDate($voucher['start_date']);
                 $Deal->start_date->setTime(0, 0, 0);
                 $Deal->end_date = $Deal->convertDate($voucher['end_date']);
                 $Deal->end_date->setTime(23, 59, 59);
-                $Deal->default_track_uri = $voucher['tracking'];
+                $Deal->default_track_uri = $voucher['click_url'];
+                if (substr($Deal->default_track_uri,0,2) == '//') {
+                    // Special case... add https:
+                    $Deal->default_track_uri = 'https:' . $Deal->default_track_uri;
+                }
                 $Deal->is_exclusive = false;
-                $Deal->deal_type = $voucher['type'];
+                $Deal->deal_type = \Oara\Utilities::OFFER_TYPE_VOUCHER;
+                if ($voucher['measure'] == 'percentage') {
+                    $Deal->is_percentage = true;
+                }
+                else {
+                    $Deal->is_percentage = false;
+                }
+                $Deal->discount_amount = $voucher['amount'];
                 $arrResult[] = $Deal;
             }
         }
-
         $result->deals[]=$arrResult;
-
-        return $result;
-;
+       return $result;
     }
 
     /**
@@ -133,9 +156,7 @@ class LinkShare extends AbstractNetwork implements NetworkInterface
      */
     public function getSales(\DateTime $dateFrom, \DateTime $dateTo, array $arrMerchantID = array()) : array
     {
-
         $arrResult = array();
-        $this->_network->_nid = $_ENV['LINKSHARE_NETWORK'];
         $transactionList = $this->_network->getTransactionList($arrMerchantID, $dateFrom, $dateTo);
         foreach($transactionList as $transaction) {
             $Transaction = Transaction::createInstance();
@@ -180,21 +201,7 @@ class LinkShare extends AbstractNetwork implements NetworkInterface
      */
     public function getStats(\DateTime $dateFrom, \DateTime $dateTo, int $merchantID = 0) : array
     {
-        // TODO
-        return array();
-        /*
-        $this->_apiClient->setConnectId($this->_username);
-        $this->_apiClient->setSecretKey($this->_password);
-        $dateFromIsoEngFormat = $dateFrom->format('Y-m-d');
-        $dateToIsoEngFormat = $dateTo->format('Y-m-d');
-        $response = $this->_apiClient->getReportBasic($dateFromIsoEngFormat, $dateToIsoEngFormat);
-        $arrResponse = json_decode($response, true);
-        $reportItems = $arrResponse['reportItems'];
-        $Stat = Stat::createInstance();
-        $Stat->reportItems = $reportItems;
-
-        return array($Stat);
-        */
+        throw new \Exception("Not implemented yet");
     }
 
 

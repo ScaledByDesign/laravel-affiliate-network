@@ -9,17 +9,17 @@ use Padosoft\AffiliateNetwork\Stat;
 use Padosoft\AffiliateNetwork\Deal;
 use Padosoft\AffiliateNetwork\AbstractNetwork;
 use Padosoft\AffiliateNetwork\NetworkInterface;
-use Padosoft\AffiliateNetwork\TradeDoublerEx;
+use Padosoft\AffiliateNetwork\AdtractionEx;
 use Padosoft\AffiliateNetwork\ProductsResultset;
 
 if (!defined('COOKIES_BASE_DIR')){
     define('COOKIES_BASE_DIR',public_path('upload/report'));
 }
 /**
- * Class TradeDoubler
+ * Class Adtraction
  * @package Padosoft\AffiliateNetwork\Networks
  */
-class TradeDoubler extends AbstractNetwork implements NetworkInterface
+class Adtraction extends AbstractNetwork implements NetworkInterface
 {
     /**
      * @var object
@@ -33,14 +33,14 @@ class TradeDoubler extends AbstractNetwork implements NetworkInterface
     protected $_tracking_parameter    = 'epi';
 
     /**
-	 * TradeDoubler constructor.
+	 * Adtraction constructor.
 	 * @param string $username
 	 * @param string $password
 	 * @param string $idSite
 	 */
     public function __construct(string $username, string $password, string $idSite = '')
     {
-        $this->_network = new \Oara\Network\Publisher\TradeDoubler;
+        $this->_network = new \Oara\Network\Publisher\Adtraction;
         $this->_username = $username;
         $this->_password = $password;
 	    $this->_idSite = $idSite;
@@ -59,9 +59,9 @@ class TradeDoubler extends AbstractNetwork implements NetworkInterface
         $this->_password = $password;
         $this->_idSite = $idSite;
         $credentials = array();
-        $credentials["user"] = $this->_username;
+        $credentials["user"] = null; // not used
         $credentials["password"] = $this->_password;
-        $credentials["idSite"] = $this->_idSite;
+        $credentials["idSite"] = null; // not used
         $this->_network->login( $credentials );
 
         if ($this->_network->checkConnection()) {
@@ -118,72 +118,7 @@ class TradeDoubler extends AbstractNetwork implements NetworkInterface
      */
     public function getDeals($merchantID,int $page=0,int $items_per_page=10) : DealsResultset
     {
-        if (!isIntegerPositive($items_per_page)){
-            $items_per_page=10;
-        }
-        $result=DealsResultset::createInstance();
-        if (!$this->checkLogin()) {
-            return $result;
-        }
-        $arrResult = array();
-        $jsonVouchers = file_get_contents("https://api.tradedoubler.com/1.0/vouchers.json;dateOutputFormat=iso8601?token=".$_ENV['TRADEDOUBLER_TOKEN']);
-        $arrVouchers = json_decode($jsonVouchers, true);
-
-        foreach($arrVouchers as $voucher) {
-            $Deal = Deal::createInstance();
-            $Deal->setValues($voucher, [
-                'id' => 'deal_ID' ,
-                'programId' => 'merchant_ID' ,
-                'code' => 'code' ,
-                'updateDate' => 'update_date' ,
-                'publishStartDate' => 'publish_start_date' ,
-                'publishEndDate' => 'publish_end_date' ,
-                'startDate' => 'start_date' ,
-                'endDate' => 'end_date' ,
-                'title' => 'name' ,
-                'shortDescription' => 'short_description' ,
-                'description' => 'description' ,
-                'voucherTypeId' => 'deal_type' ,
-                'defaultTrackUri' => 'default_track_uri' ,
-                'landingUrl' => 'landing_url' ,
-                'discountAmount' => 'discount_amount' ,
-                'isPercentage' => 'is_percentage' ,
-                'publisherInformation' => 'information' ,
-                'languageId' => 'language' ,
-                'exclusive' => 'is_exclusive' ,
-                'siteSpecific' => 'is_site_specific' ,
-                'currencyId' => 'currency_initial' ,
-                'logoPath' => 'logo_path' ,
-            ]);
-            switch ($voucher['voucherTypeId']) {
-                case 1:
-                    $Deal->deal_type = \Oara\Utilities::OFFER_TYPE_VOUCHER;
-                    break;
-                case 2:
-                    $Deal->deal_type = \Oara\Utilities::OFFER_TYPE_DISCOUNT;
-                    break;
-                case 3:
-                    $Deal->deal_type = \Oara\Utilities::OFFER_TYPE_FREE_ARTICLE;
-                    break;
-                case 4:
-                    $Deal->deal_type = \Oara\Utilities::OFFER_TYPE_FREE_SHIPPING;
-                    break;
-                case 5:
-                    $Deal->deal_type = \Oara\Utilities::OFFER_TYPE_LOTTERY;
-                    break;
-            }
-
-            if($merchantID > 0) {
-                if($voucher['programId'] == $merchantID) {
-                    $arrResult[] = $Deal;
-                }
-            }
-            else {
-                $arrResult[] = $Deal;
-            }
-        }
-        $result->deals[]=$arrResult;
-        return $result;
+        throw new \Exception("Not implemented yet");
     }
 
     /**
@@ -205,7 +140,7 @@ class TradeDoubler extends AbstractNetwork implements NetworkInterface
             $date = new \DateTime($transaction['date']);
             $Transaction->date = $date; // $date->format('Y-m-d H:i:s');
             $Transaction->unique_ID = $transaction['unique_id'];
-            $Transaction->transaction_ID = $transaction['unique_id'] . '-' . $transaction['event_id'];
+            $Transaction->transaction_ID = $transaction['unique_id'];
             array_key_exists_safe( $transaction,
                 'custom_id' ) ? $Transaction->custom_ID = $transaction['custom_id'] : $Transaction->custom_ID = '';
             $Transaction->status = $transaction['status'];
